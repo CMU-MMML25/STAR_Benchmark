@@ -29,9 +29,8 @@ from huggingface_hub import hf_hub_download
 
 from sentence_transformers import SentenceTransformer
 from qwen_vl_utils import process_vision_info
-from video_qa_dataset import VideoQADataset
 
-from frame_retriever import retrieve_frames
+from frame_retriever import CLIPKeyFrameExtractor, retrieve_frames
 
 class LookEndTokenStoppingCriteria(StoppingCriteria):
     def __init__(self, tokenizer, input_length, stop_string="</look>"):
@@ -102,17 +101,19 @@ def interactive_video_qa(
     # look_end_token_id = processor.tokenizer.convert_tokens_to_ids('</look>')
 
     # print(f"New tokens added: <look>: {look_token_id}, </look>: {look_end_token_id}")
+
+    frame_retriever = CLIPKeyFrameExtractor()
     
-    from prompts import system_prompt, user_prompt
+    from prompts import system_prompt, harder_user_prompt
 
     # Format the user prompt with the question and choices
-    formatted_user_prompt = user_prompt.format(
+    formatted_user_prompt = harder_user_prompt.format(
         question=question,
         choices=''.join([f"{i+1}. {c}" + chr(10) for i, c in enumerate(choices)])
     )
 
     # Initial messages with video
-    initial_messages = [
+    messages = [
         {
             "role": "system",
             "content": [
@@ -135,7 +136,7 @@ def interactive_video_qa(
     ]
 
     # Prepare the initial template only once
-    base_text = processor.apply_chat_template(initial_messages, tokenize=False, add_generation_prompt=True)
+    base_text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     current_text = base_text  # Text to be used for this iteration
     
     # Initialize variables
@@ -143,12 +144,14 @@ def interactive_video_qa(
     image_inputs = None   # Will hold retrieved frames
     
     # Extract initial video inputs
-    _, video_inputs = process_vision_info(initial_messages)
+    _, video_inputs = process_vision_info(messages)
     
     print(f"[Start] Starting generation, max iterations: {max_iterations}")
 
     # Perform iterative generation with look-retrieve cycles
     for iteration in range(max_iterations):
+        
+        current_text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         
         # Prepare inputs for the processor
         inputs = processor(
@@ -203,7 +206,7 @@ def interactive_video_qa(
             print(f"[Iteration {iteration}] Retrieved frames for query: {query}")
             
             # Retrieve frames based on the query
-            retrieved_frames = retrieve_frames(query, video_path, start, end)
+            retrieved_frames = retrieve_frames(frame_retriever, query, video_path, start, end)
             
             # Add the retrieved frames to image_inputs
             if not image_inputs:
@@ -215,10 +218,15 @@ def interactive_video_qa(
             # We need to include: original prompt + full response so far + vision markers
             current_text = base_text + full_response
             
+            if messages[-1]['role'] != 'assistant':
+                messages.append({"role": "assistant", "content": []})
+            
+            messages[-1]['content'].append({"type": "text", "text": new_content})
+            
             # Add vision markers for each new frame in the format Qwen expects
             for frame in retrieved_frames:
-                current_text += "\n<|vision_start|><|image_pad|><|vision_end|>"
-                new_content += str(frame)  # can print out the actual retrieved frames for visualization
+                
+                messages[-1]['content'].append({"type": "image", "image": "dummy_path"})
                 
                 print(f"[Iteration {iteration}] Retrieved frames: {str(frame)}")
             
