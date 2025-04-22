@@ -22,6 +22,8 @@ from frame_retriever import CLIPKeyFrameExtractor
 from qwen_vl_utils import process_vision_info
 from video_qa_dataset import VideoQADataset
 
+import prompts
+
 class LookEndTokenStoppingCriteria(StoppingCriteria):
     """Stopping criteria that stops generation when </look> token is generated."""
     def __init__(self, tokenizer, input_length, stop_string="</look>"):
@@ -50,7 +52,7 @@ class LookEndTokenStoppingCriteria(StoppingCriteria):
 class QwenCoTAgent:
     """Chain-of-Thought Agent using Qwen-VL model with frame retrieval capabilities."""
     
-    def __init__(self, num_frames=8, n_retrieved_frames_per_step=2, min_distance=10, similarity_threshold=None, device="cuda"):
+    def __init__(self, num_frames=8, prompt_template='user_prompt', n_retrieved_frames_per_step=2, min_distance=10, similarity_threshold=None, device="cuda"):
         """
         Initialize the QwenCoTAgent.
         
@@ -74,15 +76,18 @@ class QwenCoTAgent:
         self.frame_retriever = CLIPKeyFrameExtractor(
             clip_model_name="ViT-B/32",
             top_k=n_retrieved_frames_per_step,
-            sample_rate=11,  # max sampling rate for STAR dataset
+            sample_rate=4,  # sample every 4th frame from the raw video
             similarity_threshold=similarity_threshold,
             min_distance=min_distance,
         )
         
         # Load prompts
-        from prompts import system_prompt, harder_user_prompt
+        from prompts import system_prompt
         self.system_prompt = system_prompt
-        self.user_prompt_template = harder_user_prompt
+        try:
+            self.user_prompt_template = getattr(prompts, prompt_template)
+        except AttributeError:
+            raise ValueError(f"Prompt template '{prompt_template}' not found in prompts.py")
     
     def retrieve_frames(self, query: str, video_path: str, start: float, end: float, visualize: bool = False) -> List:
         """
@@ -305,6 +310,7 @@ if __name__ == "__main__":
     parser.add_argument("--results_file", type=str, default="analysis/qwen_cot_results.jsonl", help="Path to write model predictions")
     parser.add_argument("--final_accuracy_file", type=str, default="analysis/qwen_cot_final_accuracy.txt", help="Path to write final accuracy results")
     parser.add_argument("--num_frames", type=int, default=8, help="Number of video frames to sample for inference")
+    parser.add_argument("--prompt_template", type=str, default="user_prompt", help="Prompt for the model to generate reasoning chain")
     parser.add_argument("--n_retrieved_frames_per_step", type=int, default=2, help="Number of video frames to retrieve at each step")
     parser.add_argument("--min_distance", type=int, default=10, help="Minimum distance between retrieved frames")
 
@@ -326,7 +332,9 @@ if __name__ == "__main__":
     # Initialize the agent
     video_qa_agent = QwenCoTAgent(
         num_frames=args.num_frames,
+        prompt_template=args.prompt_template,
         n_retrieved_frames_per_step=args.n_retrieved_frames_per_step,
+        min_distance=args.min_distance,
         device=device,
     )
 
@@ -407,11 +415,22 @@ if __name__ == "__main__":
 python QwenAgent/qwen_cot_agent.py \
     --val_pkl "/data/user_data/jamesdin/STAR/data/STAR_val_1k.json" \
     --video_dir "/data/user_data/jamesdin/STAR/data/Charades_v1_480" \
-    --results_file "analysis/qwen_cot_agent_(n_retrieved=2,min_distance=5)_results_1k.jsonl" \
-    --final_accuracy_file "analysis/qwen_cot_agent_(n_retrieved=2,min_distance=5)_final_accuracy_kl.txt" \
+    --results_file "analysis/qwen_cot_agent_(user_prompt,n_retrieved=2,min_distance=20)_results_1k.jsonl" \
+    --final_accuracy_file "analysis/qwen_cot_agent_(user_prompt,n_retrieved=2,min_distance=20)_final_accuracy_kl.txt" \
     --num_frames 8 \
+    --prompt_template "user_prompt" \
     --n_retrieved_frames_per_step 2 \
-    --min_distance 5
+    --min_distance 20
+
+python QwenAgent/qwen_cot_agent.py \
+    --val_pkl "/data/user_data/jamesdin/STAR/data/STAR_val_1k.json" \
+    --video_dir "/data/user_data/jamesdin/STAR/data/Charades_v1_480" \
+    --results_file "analysis/qwen_cot_agent_(harder_user_prompt,n_retrieved=1,min_distance=20)_results_1k.jsonl" \
+    --final_accuracy_file "analysis/qwen_cot_agent_(harder_user_prompt,n_retrieved=1,min_distance=20)_final_accuracy_kl.txt" \
+    --num_frames 8 \
+    --prompt_template "harder_user_prompt" \
+    --n_retrieved_frames_per_step 1 \
+    --min_distance 20
 
 
 """

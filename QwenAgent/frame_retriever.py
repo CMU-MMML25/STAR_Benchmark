@@ -54,6 +54,61 @@ class CLIPKeyFrameExtractor:
         print(f"CLIP frame retriever initialized on {self.device} with {clip_model_name}")
         print(f"Parameters: top_k={top_k}, sample_rate={sample_rate}, min_distance={min_distance}")
 
+    def extract_frames(self, video_path: str, start: float = 0.0, end: float = None, sample_rate: int = 1) -> List[np.ndarray]:
+        """
+        Extract frames from the video at the given sample rate within a specified time range.
+    
+        Args:
+            video_path: Path to the video file
+            start: Start timestamp in seconds (default: 0.0, i.e., from the beginning)
+            end: End timestamp in seconds (default: None, i.e., until the end)
+            sample_rate: Sample every nth frame (default: 1, i.e., extract all frames)
+    
+        Returns:
+            List of extracted frames as numpy arrays, frame indices, and fps
+        """
+        frames = []
+        frame_indices = []
+    
+        # Open the video file
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise ValueError(f"Could not open video file: {video_path}")
+    
+        # Get video properties
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        duration = total_frames / fps
+        
+        # Calculate start and end frames
+        start_frame = int(start * fps) if start is not None else 0
+        end_frame = int(end * fps) if end is not None else total_frames
+        
+        # Set the starting position
+        if start_frame > 0:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        
+        # Extract frames within the specified range
+        frame_idx = start_frame
+        while frame_idx < end_frame:
+            ret, frame = cap.read()
+            if not ret:
+                break
+    
+            if (frame_idx - start_frame) % sample_rate == 0:
+                # Convert BGR to RGB (OpenCV uses BGR by default)
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frames.append(frame_rgb)
+                frame_indices.append(frame_idx)
+    
+            frame_idx += 1
+    
+        cap.release()
+
+        timestamps = [idx / fps for idx in frame_indices]
+
+        return np.array(frames), frame_indices, timestamps
+        
     def encode_question(self, question: str) -> torch.Tensor:
         """
         Encode the question using CLIP's text encoder.
@@ -269,11 +324,11 @@ class CLIPKeyFrameExtractor:
         Returns:
             Dictionary containing key frames data
         """
-        frames, indices, timestamps = read_video_pyav3(
+        frames, indices, timestamps = self.extract_frames(
             video_path, 
             start=start, 
             end=end, 
-            sampling_fps=self.sample_rate
+            sample_rate=self.sample_rate
         )
     
         # Encode the question
