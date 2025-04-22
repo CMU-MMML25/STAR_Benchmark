@@ -45,57 +45,161 @@ def display_video_clip(video_id, start_sec, end_sec, video_dir="/data/user_data/
 
 
 def read_video_pyav(container, indices):
+    """
+    Reads specific frames from a video container based on given indices.
+    
+    Args:
+        container: The AV container
+        indices: List of frame indices to extract
+        
+    Returns:
+        Tuple of (frames array, timestamps)
+    """
     frames = []
+    timestamps = []
     container.seek(0)
     start_index = indices[0]
     end_index = indices[-1]
+    
+    # Get stream for timestamp calculation
+    video_stream = container.streams.video[0]
+    
     for i, frame in enumerate(container.decode(video=0)):
         if i > end_index:
             break
         if i >= start_index and i in indices:
             frames.append(frame)
-    return np.stack([x.to_ndarray(format="rgb24") for x in frames])
+            # Calculate timestamp for this frame
+            timestamp = frame.pts * video_stream.time_base
+            timestamps.append(float(timestamp))
+            
+    return np.stack([x.to_ndarray(format="rgb24") for x in frames]), timestamps
 
 def read_video_pyav2(video_path, start, end, num_frames=8):
-        """Reads a video for given start-end timestamps interval and uniformly samples 8 frames of it"""
-        container = av.open(video_path)
-        video = container.streams.get(0)[0]
+    """
+    Reads a video for given start-end timestamps interval and uniformly samples frames.
+    
+    Args:
+        video_path: Path to the video file
+        start: Start time in seconds
+        end: End time in seconds
+        num_frames: Number of frames to sample
+        
+    Returns:
+        Tuple of (frames array, indices, timestamps)
+    """
+    container = av.open(video_path)
+    video = container.streams.video[0]  # Changed to .video[0] for consistency
 
-        av_timestamps = [
-            int(packet.pts * video.time_base)
-            for packet in container.demux(video)
-            if packet.pts is not None
-        ]
+    av_timestamps = [
+        int(packet.pts * video.time_base)
+        for packet in container.demux(video)
+        if packet.pts is not None
+    ]
 
-        av_timestamps.sort()
-        start_id = bisect.bisect_left(av_timestamps, start)
-        end_id = bisect.bisect_left(av_timestamps, end)
+    av_timestamps.sort()
+    start_id = bisect.bisect_left(av_timestamps, start)
+    end_id = bisect.bisect_left(av_timestamps, end)
 
-        # in case it is a very short video, lets take a longer duration and sample
-        if end_id - start_id < 10:
-            end_id += 10
-            start_id -= 10
+    # in case it is a very short video, lets take a longer duration and sample
+    if end_id - start_id < 10:
+        end_id += 10
+        start_id -= 10
 
-        end_id = min(len(av_timestamps) - 1, end_id)
-        start_id = max(1, start_id)
+    end_id = min(len(av_timestamps) - 1, end_id)
+    start_id = max(1, start_id)
 
-        # We sample 8 frames for tuning following the original paper
-        # But we can increase the number of frames for longer videos and check out if it helps performance
-        # Change the below "8" to any number of frames you want, and note that more frames -> more computational resources needed
-        indices = np.linspace(start_id, end_id, num_frames).astype(int)
+    # We sample frames uniformly from the time range
+    indices = np.linspace(start_id, end_id, num_frames).astype(int)
 
-        frames = []
-        container.seek(0)
-        for i, frame in enumerate(container.decode(video=0)):
-            if i > end_id:
-                break
-            if i >= start_id and i in indices:
-                frames.append(frame)
-        assert (
-            len(frames) == num_frames
-        ), f"Got {len(frames)} frames but should be {num_frames}. Check the indices: {indices};, start_id: {start_id}, end_id: {end_id}. Len of video is {len(av_timestamps)} frames."
-        return np.stack([x.to_ndarray(format="rgb24") for x in frames]), indices
+    frames = []
+    timestamps = []
+    container.seek(0)
+    for i, frame in enumerate(container.decode(video=0)):
+        if i > end_id:
+            break
+        if i >= start_id and i in indices:
+            frames.append(frame)
+            # Get timestamp for this frame
+            if i < len(av_timestamps):
+                timestamps.append(float(av_timestamps[i]))
+            else:
+                # Estimate timestamp if index is out of bounds
+                timestamps.append(float(start + (i - start_id) * (end - start) / (end_id - start_id)))
+    
+    assert (
+        len(frames) == num_frames
+    ), f"Got {len(frames)} frames but should be {num_frames}. Check the indices: {indices};, start_id: {start_id}, end_id: {end_id}. Len of video is {len(av_timestamps)} frames."
+    
+    return np.stack([x.to_ndarray(format="rgb24") for x in frames]), indices, timestamps
 
+def read_video_pyav3(video_path, start, end, sampling_fps=4):
+    """
+    Reads a video clip from start-end timestamps and samples frames at specified FPS.
+    
+    Args:
+        video_path: Path to the video file
+        start: Start time in seconds
+        end: End time in seconds
+        sampling_fps: Number of frames per second to sample
+        
+    Returns:
+        Tuple of (frames array, indices, timestamps)
+    """
+    container = av.open(video_path)
+    video = container.streams.video[0]
+    
+    # Calculate number of frames needed based on duration and sampling FPS
+    duration = end - start
+    num_frames = int(round(sampling_fps * duration))
+    num_frames = max(1, num_frames)  # Ensure at least 1 frame
+
+    # Get sorted presentation timestamps
+    av_timestamps = [
+        int(packet.pts * video.time_base)
+        for packet in container.demux(video)
+        if packet.pts is not None
+    ]
+    av_timestamps.sort()
+
+    # Find frame indices bounding our clip
+    start_id = bisect.bisect_left(av_timestamps, start)
+    end_id = bisect.bisect_left(av_timestamps, end)
+
+    # Expand window for short clips
+    if end_id - start_id < 10:
+        end_id += 10
+        start_id -= 10
+
+    # Clamp to valid range
+    end_id = min(len(av_timestamps) - 1, end_id)
+    start_id = max(0, start_id)
+
+    # Generate sampling indices
+    indices = np.linspace(start_id, end_id, num_frames, dtype=int)
+
+    # Extract frames
+    frames = []
+    timestamps = []
+    container.seek(0)
+    for i, frame in enumerate(container.decode(video=0)):
+        if i > end_id:
+            break
+        if i >= start_id and i in indices:
+            frames.append(frame)
+            # Get timestamp for this frame
+            if i < len(av_timestamps):
+                timestamps.append(float(av_timestamps[i]))
+            else:
+                # Estimate timestamp if index is out of bounds
+                timestamps.append(float(start + (i - start_id) * (end - start) / (end_id - start_id)))
+    
+    assert len(frames) == num_frames, (
+        f"Frame sampling failed: Expected {num_frames}, got {len(frames)}. "
+        f"Time range: {start}-{end}s ({duration}s), Sampling FPS: {sampling_fps}."
+    )
+    
+    return np.stack([x.to_ndarray(format="rgb24") for x in frames]), indices, timestamps
 
 def visualize_video_attention(model, processor, prompt, video_frames, max_new_tokens=1):
     """
