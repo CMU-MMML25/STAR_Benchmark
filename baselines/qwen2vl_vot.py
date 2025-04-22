@@ -508,9 +508,10 @@ if __name__ == "__main__":
 """
 
 python baselines/qwen2vl_vot.py \
-    --val_pkl "/data/user_data/jamesdin/STAR/data/STAR_val.json" \
+    --val_pkl "/data/user_data/jamesdin/STAR/data/STAR_val_1k.json" \
     --video_dir "/data/user_data/jamesdin/STAR/data/Charades_v1_480" \
-    --results_file "analysis/results/qwen2vl_vot_results.jsonl" \
-    --final_accuracy_file "analysis/results/qwen2vl_vot_final_accuracy.txt" \
+    --results_file "analysis/results/qwen2vl_vot_results_1k.jsonl" \
+    --final_accuracy_file "analysis/results/qwen2vl_vot_final_accuracy_1k.txt" \
     --num_frames 8
+
 """

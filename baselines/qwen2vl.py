@@ -235,6 +235,15 @@ python baselines/qwen2vl.py \
     --results_file "analysis/qwen2vl_results.jsonl" \
     --final_accuracy_file "analysis/qwen2vl_final_accuracy.txt" \
     --num_frames 8
+    
+    
+
+python baselines/qwen2vl.py \
+    --val_pkl "/data/user_data/jamesdin/STAR/data/STAR_val_1k.json" \
+    --video_dir "/data/user_data/jamesdin/STAR/data/Charades_v1_480" \
+    --results_file "analysis/qwen2vl_results_1k.jsonl" \
+    --final_accuracy_file "analysis/qwen2vl_final_accuracy_1k.txt" \
+    --num_frames 8
 
 
 """
