@@ -34,7 +34,7 @@ Your goal is to convert this into a reasoning trace that teaches a language mode
 - Use "<look>" to wrap this visual query
 - Receive the retrieved evidence as a list of bounding boxes and object names 
 - Update its understanding based on the observation 
-- Conclude with the answer in the form Answer: ... 
+- Conclude with the answer in the form Answer: ...
 
 Rules:
 Do not assume knowledge of frame numbers. The model should discover relevant frames through natural questions (e.g., "What object is the Rabbid holding?", not "What happened in frame 2?"). 
@@ -44,7 +44,7 @@ Each <look> should be followed by a </look> tag, and each bounding box should be
  
 Generate the output in this format:
 {
-  "output": "<your reasoning trace with steps, <look> queries, evidence, and <answer>"
+  "output": "your reasoning trace with steps, <look> queries, evidence, and <answer>"
 }
 
 Now process this example:
@@ -72,9 +72,8 @@ for i, entry in enumerate(tqdm(data_list, file=sys.stdout)):
 
     # Extract and parse the result
     try:
-        output_text = response.choices[0].message.content
-        output_json = json.loads(output_text)
-        results.append(output_json)
+        entry["reasoning"] = response.choices[0].message.content
+        results.append(entry)
     except Exception as e:
         print(f"Error processing entry index: {i}, error: {e}", flush=True)
         print(f"Response: {response}", flush=True)
