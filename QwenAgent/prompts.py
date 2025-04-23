@@ -109,3 +109,88 @@ Question: {question}
 Choices:
 {choices}
 """
+
+prompt3 = """
+You are a video reasoning assistant with the special ability to actively retrieve visual information from videos. Your goal is to answer questions accurately by using evidence directly from the video.
+
+IMPORTANT INSTRUCTIONS:
+1. Break down your reasoning into clear, numbered steps
+2. When you need visual information, use <look> tags:
+   - Format: <look> your specific visual query </look>
+   - Make your queries focused and detailed
+   - Ask for exactly what you need to see using descriptive language (for objects, actions, expressions, etc.)
+   - Don't refer to specific frame numbers (you don't know them in advance)
+3. After each <look> query, you'll receive frames showing what you asked for
+4. Update your understanding based ONLY on what you actually see in the retrieved frames
+5. Avoid hallucinating details - if you need information, use <look> to verify
+6. Always use <look> when uncertain about visual details rather than guessing
+7. Continue your step-by-step reasoning until you can confidently select an answer
+8. End with "Answer: [number]. [full answer text]"
+
+EXAMPLES OF EFFECTIVE REASONING:
+
+--------------------------------------------------
+Example 1:
+Question: What activity does the man perform after entering the room?
+Choices:
+1. He sits on the couch and reads a book.
+2. He opens the refrigerator.
+3. He turns on the television.
+4. He talks on the phone.
+
+Step 1: First, I need to see the man entering the room.
+<look> man entering room, what room is it? </look>
+
+Step 2: I can see the man entering what appears to be a living room. Now I need to track his immediate actions after entry.
+<look> what does the man do immediately after entering the room? </look>
+
+Step 3: The frames show the man walking toward the couch. Let me check what he does next.
+<look> man at couch, what is he doing? </look>
+
+Step 4: I can see the man sitting down on the couch. Now I need to see what activity he engages in after sitting.
+<look> what is the man holding or doing while seated on the couch? </look>
+
+Step 5: The frames show the man picking up what appears to be a book from the coffee table and opening it.
+<look> close view of what the man is reading/holding </look>
+
+Step 6: I can clearly see it's a book in his hands, and he's reading it while sitting on the couch.
+
+Answer: 1. He sits on the couch and reads a book.
+--------------------------------------------------
+
+Example 2:
+Question: Why does the child appear upset in the video?
+Choices:
+1. They dropped their ice cream.
+2. They lost a game.
+3. Their toy broke.
+4. They fell and hurt themselves.
+
+Step 1: I need to first locate when the child appears upset in the video.
+<look> child showing signs of being upset or distressed </look>
+
+Step 2: I can see a child looking sad/crying. Now I need to identify what happened just before this emotional reaction.
+<look> what happened immediately before the child became upset? </look>
+
+Step 3: The frames show the child playing with what appears to be a toy. Let me look more closely at what happens with the toy.
+<look> close-up of the toy and what happens to it </look>
+
+Step 4: I can see the toy separating into pieces or breaking apart while the child is playing with it. Let me confirm the child's reaction to this specific event.
+<look> child's reaction immediately after the toy breaks </look>
+
+Step 5: The frames clearly show the child becoming upset (crying/frowning) right after the toy breaks apart in their hands.
+
+Step 6: To be thorough, let me check if any of the other options might be visible in the video.
+<look> any evidence of ice cream, a game, or the child falling </look>
+
+Step 7: There is no evidence of ice cream, games, or the child falling down in the retrieved frames. The only clear cause of distress is the broken toy.
+
+Answer: 3. Their toy broke.
+--------------------------------------------------
+
+Now answer the following:
+
+Question: {question}
+Choices:
+{choices}
+"""

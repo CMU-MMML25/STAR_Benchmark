@@ -52,7 +52,7 @@ class LookEndTokenStoppingCriteria(StoppingCriteria):
 class QwenCoTAgent:
     """Chain-of-Thought Agent using Qwen-VL model with frame retrieval capabilities."""
     
-    def __init__(self, num_frames=8, prompt_template='user_prompt', n_retrieved_frames_per_step=2, min_distance=10, similarity_threshold=None, device="cuda"):
+    def __init__(self, num_frames=8, prompt_template='user_prompt', clip_model='ViT', n_retrieved_frames_per_step=2, min_distance=10, similarity_threshold=None, device="cuda"):
         """
         Initialize the QwenCoTAgent.
         
@@ -72,11 +72,24 @@ class QwenCoTAgent:
         )
         self.processor = AutoProcessor.from_pretrained("Qwen/Qwen2.5-VL-3B-Instruct")
         
+        self.model.eval()
+        
+        # reference: https://github.com/mlfoundations/open_clip/blob/main/docs/openclip_results.csv
+        available_clip_models = {
+            "ViT": {"clip_model_name": "ViT-H-14-378-quickgelu", "pretrained": "laion2b_s34b_b79k"},
+            "EVA-CLIP": {"clip_model_name": "EVA02-E-14-plus", "pretrained": "laion2b_s9b_b144k"},
+            "SigLIP": {"clip_model_name": "ViT-SO400M-14-SigLIP-384", "pretrained": "webli"},
+        }
+        assert clip_model in available_clip_models, f"Unsupported CLIP model: {clip_model}, available models: {available_clip_models.keys()}"
+        clip_model_name = available_clip_models[clip_model]["clip_model_name"]
+        pretrained = available_clip_models[clip_model]["pretrained"]
+        
         # Initialize frame retriever
         self.frame_retriever = CLIPKeyFrameExtractor(
-            clip_model_name="ViT-B/32",
+            clip_model_name=clip_model_name,
+            pretrained=pretrained,
             top_k=n_retrieved_frames_per_step,
-            sample_rate=4,  # sample every 4th frame from the raw video
+            sample_rate=8,  # sample every 8th frame from the raw video
             similarity_threshold=similarity_threshold,
             min_distance=min_distance,
         )
@@ -89,6 +102,7 @@ class QwenCoTAgent:
         except AttributeError:
             raise ValueError(f"Prompt template '{prompt_template}' not found in prompts.py")
     
+    @torch.no_grad()
     def retrieve_frames(self, query: str, video_path: str, start: float, end: float, visualize: bool = False) -> List:
         """
         Retrieve relevant frames based on the query.
@@ -120,6 +134,7 @@ class QwenCoTAgent:
         
         return key_frames_data
     
+    @torch.no_grad()
     def video_qa(self, video_path: str, question: str, choices: List[str], 
                  start: float, end: float, max_iterations: int = 5, verbose: bool = False) -> str:
         """
@@ -311,6 +326,7 @@ if __name__ == "__main__":
     parser.add_argument("--final_accuracy_file", type=str, default="analysis/qwen_cot_final_accuracy.txt", help="Path to write final accuracy results")
     parser.add_argument("--num_frames", type=int, default=8, help="Number of video frames to sample for inference")
     parser.add_argument("--prompt_template", type=str, default="user_prompt", help="Prompt for the model to generate reasoning chain")
+    parser.add_argument("--clip_model", type=str, default="ViT", help="CLIP model type for frame retrieval")
     parser.add_argument("--n_retrieved_frames_per_step", type=int, default=2, help="Number of video frames to retrieve at each step")
     parser.add_argument("--min_distance", type=int, default=10, help="Minimum distance between retrieved frames")
 
@@ -333,6 +349,7 @@ if __name__ == "__main__":
     video_qa_agent = QwenCoTAgent(
         num_frames=args.num_frames,
         prompt_template=args.prompt_template,
+        clip_model=args.clip_model,
         n_retrieved_frames_per_step=args.n_retrieved_frames_per_step,
         min_distance=args.min_distance,
         device=device,
@@ -345,7 +362,7 @@ if __name__ == "__main__":
     # Open results file in append mode
     with open(args.results_file, "a") as results_f:
         with tqdm(dataloader, desc="Evaluating", dynamic_ncols=True) as pbar:
-            for batch in pbar:
+            for i, batch in enumerate(pbar):
                 start_time = perf_counter()
 
                 # Extract batch data
@@ -373,6 +390,7 @@ if __name__ == "__main__":
 
                 # Save result to JSONL file
                 json_record = {
+                    "example_id": i,
                     "question_id": question_id,
                     "question": question,
                     "choices": choices,
@@ -431,6 +449,26 @@ python QwenAgent/qwen_cot_agent.py \
     --prompt_template "harder_user_prompt" \
     --n_retrieved_frames_per_step 1 \
     --min_distance 20
+    
+python QwenAgent/qwen_cot_agent.py \
+    --val_pkl "/data/user_data/jamesdin/STAR/data/STAR_val_1k.json" \
+    --video_dir "/data/user_data/jamesdin/STAR/data/Charades_v1_480" \
+    --results_file "analysis/qwen_cot_agent_(prompt3,n_retrieved=3,min_distance=10)_results_1k.jsonl" \
+    --final_accuracy_file "analysis/qwen_cot_agent_(prompt3,n_retrieved=3,min_distance=10)_final_accuracy_kl.txt" \
+    --num_frames 8 \
+    --prompt_template "prompt3" \
+    --n_retrieved_frames_per_step 3 \
+    --min_distance 10
 
+python QwenAgent/qwen_cot_agent.py \
+    --val_pkl "/data/user_data/jamesdin/STAR/data/STAR_val_1k.json" \
+    --video_dir "/data/user_data/jamesdin/STAR/data/Charades_v1_480" \
+    --results_file "analysis/qwen_cot_agent_(SigLIP,prompt3,n_retrieved=3,min_distance=10)_results_1k.jsonl" \
+    --final_accuracy_file "analysis/qwen_cot_agent_(SigLIP,prompt3,n_retrieved=3,min_distance=10)_final_accuracy_kl.txt" \
+    --num_frames 8 \
+    --prompt_template "prompt3" \
+    --clip_model "SigLIP" \
+    --n_retrieved_frames_per_step 3 \
+    --min_distance 10
 
 """

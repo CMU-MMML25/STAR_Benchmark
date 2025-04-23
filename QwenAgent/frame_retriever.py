@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import os
 import torch
 import clip
+import open_clip
 import av
 import bisect
 from PIL import Image
@@ -28,6 +29,7 @@ from visualization_utils import read_video_pyav3
 class CLIPKeyFrameExtractor:
     def __init__(self, 
                  clip_model_name: str = "ViT-B/32", 
+                 pretrained: str = "laion2b_s34b_b79k",
                  top_k: int = 3,
                  sample_rate: int = 4, 
                  similarity_threshold: float = None,
@@ -44,7 +46,12 @@ class CLIPKeyFrameExtractor:
         """
         # Load the CLIP model
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model, self.preprocess = clip.load(clip_model_name, device=self.device)
+        # self.model, self.preprocess = clip.load(clip_model_name, device=self.device)
+        self.model, _, self.preprocess = open_clip.create_model_and_transforms(clip_model_name, pretrained=pretrained)
+        self.tokenize = open_clip.get_tokenizer(clip_model_name)
+        
+        self.model.to(self.device)
+        self.model.eval()
         
         self.top_k = top_k
         self.sample_rate = sample_rate
@@ -121,7 +128,7 @@ class CLIPKeyFrameExtractor:
         """
         # Tokenize and encode the question
         with torch.no_grad():
-            text_inputs = clip.tokenize([question]).to(self.device)
+            text_inputs = self.tokenize([question]).to(self.device)
             question_features = self.model.encode_text(text_inputs)
             # Normalize the features
             question_features = question_features / question_features.norm(dim=-1, keepdim=True)
